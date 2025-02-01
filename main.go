@@ -1,20 +1,29 @@
 package main
 
 import (
-	"net/http"
-	"time"
+	"log"
+	"os"
 
-	"github.com/flosch/pongo2"
+	"tech-blog/handler"
+	"tech-blog/repository"
+
+	_ "github.com/go-sql-driver/mysql" // Using MySQL driver
+	"github.com/jmoiron/sqlx"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 )
 
-const tmplPath = "src/template/"
-
+var db *sqlx.DB
 var e = createMux()
 
 func main() {
-	e.GET("/", articleIndex)
+	db = connectDB()
+	repository.SetDB(db)
+
+	e.GET("/", handler.ArticleIndex)
+	e.GET("/new", handler.ArticleNew)
+	e.GET("/:id", handler.ArticleShow)
+	e.GET("/:id/edit", handler.ArticleEdit)
 
 	e.Logger.Fatal(e.Start(":8080"))
 }
@@ -26,25 +35,21 @@ func createMux() *echo.Echo {
 	e.Use(middleware.Logger())
 	e.Use(middleware.Gzip())
 
+	e.Static("/css", "src/css")
+	e.Static("/js", "src/js")
+
 	return e
 }
 
-func articleIndex(c echo.Context) error {
-	data := map[string]interface{}{
-		"Message": "Hello, World!",
-		"Now":     time.Now(),
-	}
-	return render(c, "article/index.html", data)
-}
-
-func htmlBlob(file string, data map[string]interface{}) ([]byte, error) {
-	return pongo2.Must(pongo2.FromCache(tmplPath + file)).ExecuteBytes(data)
-}
-
-func render(c echo.Context, file string, data map[string]interface{}) error {
-	b, err := htmlBlob(file, data)
+func connectDB() *sqlx.DB {
+	dsn := os.Getenv("DSN")
+	db, err := sqlx.Open("mysql", dsn)
 	if err != nil {
-		return c.NoContent(http.StatusInternalServerError)
+		e.Logger.Fatal(err)
 	}
-	return c.HTMLBlob(http.StatusOK, b)
+	if err := db.Ping(); err != nil {
+		e.Logger.Fatal(err)
+	}
+	log.Println("db connection succeeded")
+	return db
 }
